@@ -60,27 +60,24 @@ def recursive_call(func_heur, addresses=None):
 
 def _virt_find(virt, pattern):
     """Search @pattern in elfesteem @virt instance
-    Inspired from elf_init.virt.find
     """
     regexp = re.compile(pattern)
-    offset = 0
-    sections = []
-    for s in virt.parent.ph:
-        s_max = s.ph.memsz
-        if offset < s.ph.vaddr + s_max:
-            sections.append(s)
-
-    if not sections:
-        raise StopIteration
-    offset -= sections[0].ph.vaddr
-    if offset < 0:
-        offset = 0
-    for s in sections:
-        data = virt.parent.content[s.ph.offset:s.ph.offset + s.ph.filesz]
-        ret = regexp.finditer(data[offset:])
-        yield ret, s.ph.vaddr
-        offset = 0
-
+    if not hasattr(virt, 'parent'):       # RAW data
+        segments = [ virt ]
+        get_data = lambda s: s
+        ret_addr = lambda s, pos: pos.start()
+    elif hasattr(virt.parent, 'ph'):      # ELF
+        segments = virt.parent.ph
+        get_data = lambda s: virt.parent.content[s.ph.offset:s.ph.offset+s.ph.filesz]
+        ret_addr = lambda s, pos: pos.start() + s.ph.vaddr
+    elif hasattr(virt.parent, 'SHList'):  # PE
+        segments = virt.parent.SHList
+        get_data = lambda s: str(s.data)
+        ret_addr = lambda s, pos: virt.parent.rva2virt(s.addr + pos.start())
+    for s in segments:
+        data = get_data(s)
+        for pos in regexp.finditer(data):
+            yield ret_addr(s, pos)
 
 def pattern_matching(func_heur):
     """Search for function by pattern matching"""
@@ -90,15 +87,16 @@ def pattern_matching(func_heur):
     prologs = csts.func_prologs.get(architecture, [])
     data = func_heur.cont.bin_stream.bin
 
+    # Recover base address from bin_stream_str
+    map_addr = getattr(func_heur.cont._bin_stream, 'shift', 0)
+
     addresses = {}
 
     # Search for function prologs
 
     pattern = "(" + ")|(".join(prologs) + ")"
-    for find_iter, vaddr_base in _virt_find(data, pattern):
-        for match in find_iter:
-            addr = match.start() + vaddr_base
-            addresses[addr] = 1
+    for addr in _virt_find(data, pattern):
+        addresses[map_addr+addr] = 1
 
     return addresses
 

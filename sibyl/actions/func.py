@@ -40,6 +40,8 @@ class ActionFunc(Action):
                                     "choices": Machine.available_machine()}),
         (["-v", "--verbose"], {"help": "Verbose mode",
                                "action": "store_true"}),
+        (["-m", "--mapping-base"], {"help": "Binary mapping address",
+                                    "default": "0"}),
         (["-d", "--disable-heuristic"], {"help": "Disable an heuristic",
                                          "action": "append",
                                          "choices": heur_names,
@@ -51,6 +53,8 @@ class ActionFunc(Action):
     ]
 
     def run(self):
+        # Parse args
+        map_addr = int(self.args.mapping_base, 0)
         # Architecture
         architecture = False
         if self.args.architecture:
@@ -63,7 +67,7 @@ class ActionFunc(Action):
             if self.args.verbose:
                 print "Guessed architecture: %s" % architecture
 
-        cont = Container.from_stream(open(self.args.filename))
+        cont = Container.from_stream(open(self.args.filename), addr=map_addr)
         machine = Machine(architecture)
         addr_size = machine.ira().pc.size / 4
         fh = FuncHeuristic(cont, machine)
